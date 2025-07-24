@@ -19,6 +19,7 @@ class _MyHomePageState extends State<MyHomePage> {
   final _serial = FlutterSerialCommunication();
   List<dynamic> _devices = [];
   bool _isConnected = false;
+  String _receivedData = "";
 
   @override
   void initState() {
@@ -28,7 +29,6 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> _initSerial() async {
     // Get available devices
-    String _receivedData = "";
     List<dynamic> devices = await _serial.getAvailableDevices();
     setState(() {
       _devices = devices;
@@ -37,6 +37,9 @@ class _MyHomePageState extends State<MyHomePage> {
     // Listen for incoming serial data
     _serial.getSerialMessageListener().receiveBroadcastStream().listen((event) {
       debugPrint("🔻 Received From Device: $event");
+      setState(() {
+        _receivedData = "$event\n";
+      });
     });
 
     // Listen for device connect/disconnect
@@ -100,6 +103,23 @@ class _MyHomePageState extends State<MyHomePage> {
                 child: const Text("Disconnect"),
               ),
               Text(_isConnected ? "🔗 Connected" : "❌ Disconnected"),
+              const SizedBox(height: 16),
+              const Text("Received Data:"),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                height: 150,
+                width: double.infinity,
+                child: SingleChildScrollView(
+                  child: Text(
+                    _receivedData,
+                    style: const TextStyle(fontFamily: 'monospace'),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
