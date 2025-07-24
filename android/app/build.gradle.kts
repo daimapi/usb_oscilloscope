@@ -7,9 +7,8 @@ plugins {
 
 android {
     namespace = "com.example.usb_oscilloscope"
-    compileSdk = 36//flutter.compileSdkVersion
-    //buildToolsVersion = "36.0.0"
-    ndkVersion = "27.0.12077973"//flutter.ndkVersion
+    compileSdk = 36
+    ndkVersion = "27.0.12077973"//ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -25,10 +24,8 @@ android {
         applicationId = "com.example.usb_oscilloscope"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = 36
-        targetSdk = 36
-        compileSdk = 36
-        //buildToolsVersion = "36.0.0"
+        minSdk = flutter.minSdkVersion
+        targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }

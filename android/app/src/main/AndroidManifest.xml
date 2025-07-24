@@ -42,5 +42,4 @@
             <data android:mimeType="text/plain"/>
         </intent>
     </queries>
-    <uses-feature android:name="android.hardware.usb.host" />
 </manifest>
