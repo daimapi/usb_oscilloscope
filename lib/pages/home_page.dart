@@ -49,7 +49,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _connectToDevice(dynamic device) async {
-    bool result = await _serial.connect(device, 9600); // use your own baudrate
+    bool result = await _serial.connect(device, 9600); // use your own baud rate
     setState(() {
       _isConnected = result;
     });
