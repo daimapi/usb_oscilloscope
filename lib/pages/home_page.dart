@@ -6,6 +6,17 @@ import 'package:usb_oscilloscope/widgets/LineChart.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'dart:math';
 import 'dart:async';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
+
+List<double> parseDoubleList(String message) {
+  return message
+      .split('\n')
+      .map((s) => double.tryParse(s.trim()))
+      .whereType<double>()
+      .where((d) => d.isFinite)
+      .toList();
+}
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key, required this.title});
@@ -16,7 +27,7 @@ class MyHomePage extends StatefulWidget {
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
+class _MyHomePageState extends State<MyHomePage> with SingleTickerProviderStateMixin {
   int data = 0;
   final _serial = FlutterSerialCommunication();
   List<dynamic> _devices = [];
@@ -26,6 +37,10 @@ class _MyHomePageState extends State<MyHomePage> {
   List<FlSpot> _data = [];
   List<double> _datastream = [];
   Timer? _updateTimer;
+  bool _isUpdateScheduled = false;
+  final List<String> _pendingMessages = [];
+  bool _isComputing = false;
+  late final Ticker _ticker;
 
   double _minX = 0;
   double _maxX = 10;
@@ -35,52 +50,162 @@ class _MyHomePageState extends State<MyHomePage> {
   double _scaleX = 1.0;
   double _scaleY = 1.0;
 
+  Duration _lastUpdate = Duration.zero;
+
   @override
   void initState() {
     super.initState();
     _mockReceive();
-    //_generateData();
-    _initSerial();
+    //_initSerial();
+    _ticker = Ticker(_onTick)..start();
+  }
+
+  void _onTick(Duration elapsed) {
+    // 每 50ms 更新一次圖表
+    if (elapsed - _lastUpdate >= const Duration(milliseconds: 50)) {
+      _lastUpdate = elapsed;
+      _updateChart();
+    }
+  }
+
+  void _updateChart() {
+    final len = _datastream.length.clamp(0, 1000);
+    final List<FlSpot> _nextdata = List.generate(len, (i) => FlSpot(i.toDouble(), _datastream[i]));
+    setState(() {
+      _data = _nextdata;
+    });
+  }
+
+  void _processNextBatch() async {
+    if (_pendingMessages.isEmpty) return;
+
+    _isComputing = true;
+
+    final batch = _pendingMessages.join();
+    _pendingMessages.clear();
+
+    try {
+      final List<double> parsed = await compute(parseDoubleList, batch);//parseDoubleList(message);
+
+      _datastream.addAll(parsed);
+      if (_datastream.length > 1000) {
+        _datastream.removeRange(0, _datastream.length - 1000);
+      }
+      if (!_isUpdateScheduled) {
+        _isUpdateScheduled = true;
+        _updateTimer = Timer(const Duration(milliseconds: 50), () {
+          _isUpdateScheduled = false;//throttle
+
+          //debugPrint("ndl: ${parsed.length}");
+          //debugPrint("dsl: ${_datastream.length}");
+          //debugPrint("🔄 Running updateTimer...");
+          //final len = _datastream.length.clamp(0, 1000);
+          //final List<FlSpot> _nextdata = List.generate(len, (i) => FlSpot(i.toDouble(), _datastream[i]));
+          //setState(() {
+          //  _data = _nextdata;
+          //});
+        });
+      }
+    } catch (e) {
+      debugPrint("❌ compute error: $e");
+    }
+
+    _isComputing = false;
+
+    if (_pendingMessages.isNotEmpty) {
+      _processNextBatch();
+    }
   }
 
   void _mockReceive() {
     Timer.periodic(const Duration(milliseconds: 1), (timer) {
       final value = sin(DateTime.now().millisecondsSinceEpoch / 100.0);
       _onDataReceived("$value\n");
+      //debugPrint("📈 Mock value: $value");
     });
+    debugPrint("🔧 Mock started");
   } // 模擬收到資料
 
-  void _generateData() {
-    _data = List.generate(_datastream.length, (i) {
-      return FlSpot(i.toDouble(), _datastream[i]);
-    });
-    /*if (_datastream.isNotEmpty && _datastream.length >= 1000) {
-      while (_datastream.length > 1000) {
-        _datastream.removeAt(0);
+  @override
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
+  }
+
+  void _onDataReceived(String message) async{//{
+    /*try {
+      final List<double> newData = message
+          .split('\n')
+          .map((s) => double.tryParse(s.trim()))
+          .whereType<double>()
+          .where((d) => d.isFinite)
+          .toList();
+
+      _datastream.addAll(newData);
+
+      // 保留最多 1000 筆資料
+      if (_datastream.length > 1000) {
+        _datastream.removeRange(0, _datastream.length - 1000);
       }
-      _data = List.generate(1000, (i) {
-        final x = i / 100;
-        final y = _datastream[i];
-        return FlSpot(x, y);
+
+      // debounce 更新圖表
+      _updateTimer?.cancel();
+      _updateTimer = Timer(const Duration(milliseconds: 50), () {
+        debugPrint("🔄 Running updateTimer...");
+        setState(() => _data = List.generate(1000, (i) {
+          final x = i / 100;
+          final y = _datastream[i];
+            return FlSpot(x, y);}));
       });
-    } else {
-      _data = List.generate(1000, (i) {
-        final x = i / 100;
-        final y = 1.2 * sin(x);
-        return FlSpot(x, y);
-      });
+    } catch (e) {
+      debugPrint("❌ error: $e");
+    }
+    debugPrint("🖼️ UI updated: ${_data.length} points");
+    debugPrint("🖼️ UI updated: ${_datastream.length} points");*/
+    /*try {
+      final List<double> newData = await compute(parseDoubleList, message);//parseDoubleList(message);
+
+      _datastream.addAll(newData);
+      if (_datastream.length > 1000) {
+        _datastream.removeRange(0, _datastream.length - 1000);
+      }
+
+      // ✅ Throttle: 若尚未安排更新，則安排一個
+      if (!_isUpdateScheduled) {
+        _isUpdateScheduled = true;
+        _updateTimer = Timer(const Duration(milliseconds: 50), () {
+          _isUpdateScheduled = false;
+
+          debugPrint("ndl: ${newData.length}");
+          debugPrint("dsl: ${_datastream.length}");
+          debugPrint("🔄 Running updateTimer...");
+          final len = _datastream.length.clamp(0, 1000);
+          setState(() {
+            /*_data = List.generate(len, (i) {
+              final x = i.toDouble();
+              final y = _datastream[i];
+              return FlSpot(x, y);
+            });*/
+            _data = List.generate(len, (i) => FlSpot(i.toDouble(), _datastream[i]));
+          });
+        });
+      }
+
+    } catch (e) {
+      debugPrint("❌ error: $e");
     }*/
-  } //gpt ass
+    _pendingMessages.add(message);
+
+    if (!_isComputing) {
+      _processNextBatch();  // 只有一個 compute 跑著
+    }
+  }
 
   Future<void> _initSerial() async {
-    // Get available devices
     List<dynamic> devices = await _serial.getAvailableDevices();
-    setState(
-        () => _devices = devices); //expression body: () => fn same_as () {fn}
+    setState(() => _devices = devices);
 
-    // Listen for incoming serial data
     _serial.getSerialMessageListener().receiveBroadcastStream().listen((event) {
-      //debugPrint("🔻 Received From Device: $event");
       String message;
       if (event is String) {
         message = event;
@@ -88,40 +213,18 @@ class _MyHomePageState extends State<MyHomePage> {
         message = String.fromCharCodes(event);
       } else {
         message = event.toString();
-      }
-      setState(() {
-        _receivedData = "$message\n";
-        //_datastream +=
-        //    _receivedData.split('\n').map((s) => double.parse(s)).toList();
-        _datastream += _receivedData
-            .split('\n')
-            .map((s) {
-              try {
-                return double.parse(s.trim());
-              } catch (e) {
-                debugPrint("not double: $s");
-                return null;
-              }
-            })
-            .whereType<double>() // ✅ 把 null 過濾掉
-            .toList();
-        _generateData();
-      });
+      }//income message to string
+      _onDataReceived(message);
     });
 
-    // Listen for device connect/disconnect
-    _serial
-        .getDeviceConnectionListener()
-        .receiveBroadcastStream()
-        .listen((event) {
+    _serial.getDeviceConnectionListener().receiveBroadcastStream().listen((event) {
       debugPrint("🔌 Device Event: $event");
-      //setState(() => _receivedData = "$event\n");
     });
   }
 
   Future<void> _connectToDevice(dynamic device) async {
     bool result =
-        await _serial.connect(device, 2000000); // use your own baud rate
+    await _serial.connect(device, 2000000); // use your own baud rate
     setState(() => _isConnected = result);
     debugPrint("✅ Connected: $result");
   }
@@ -142,16 +245,16 @@ class _MyHomePageState extends State<MyHomePage> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
               ..._devices.map((device) => ListTile(
-                    title: Text(device.deviceName ?? "Unnamed Device"),
-                    subtitle: Text(device.manufacturerName ?? "Unknown"),
-                    trailing: IconButton(
-                      onPressed: () {
-                        _connectToDevice(device);
-                        Navigator.pop(context);
-                      },
-                      icon: Icon(Icons.usb),
-                    ),
-                  )),
+                title: Text(device.deviceName ?? "Unnamed Device"),
+                subtitle: Text(device.manufacturerName ?? "Unknown"),
+                trailing: IconButton(
+                  onPressed: () {
+                    _connectToDevice(device);
+                    Navigator.pop(context);
+                  },
+                  icon: Icon(Icons.usb),
+                ),
+              )),
               TextButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Close'),
@@ -185,34 +288,6 @@ class _MyHomePageState extends State<MyHomePage> {
     setState(() {});
   }
 
-  void _onDataReceived(String message) {
-    try {
-      final List<double> newData = message
-          .split('\n')
-          .map((s) => double.tryParse(s.trim()))
-          .whereType<double>()
-          .where((d) => d.isFinite)
-          .toList();
-
-      _datastream.addAll(newData);
-
-      // 保留最多 1000 筆資料
-      if (_datastream.length > 1000) {
-        _datastream.removeRange(0, _datastream.length - 1000);
-      }
-
-      // debounce 更新圖表
-      _updateTimer?.cancel();
-      _updateTimer = Timer(const Duration(milliseconds: 50), () {
-        setState(() {
-          _generateData();
-        });
-      });
-    } catch (e) {
-      debugPrint("❌ error: $e");
-    }
-  }
-
   void _applyScale() {
     final xCenter = (_minX + _maxX) / 2;
     final yCenter = (_minY + _maxY) / 2;
@@ -231,78 +306,78 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   Widget build(BuildContext context) {
     return //MaterialApp(
-        //home: Scaffold(
-        Scaffold(
-      appBar: AppBar(
-        title: const Text('USB Serial'),
-        actions: <Widget>[
-          IconButton(
-              onPressed: _isConnected ? _disconnect : null,
-              icon: Icon(Icons.usb_off)),
-          IconButton(
-              onPressed: _isConnected ? null : () => _refresh(context),
-              icon: Icon(Icons.find_replace)),
-          IconButton(
-              onPressed: _orientation,
-              icon: Icon(_ort_portrait
-                  ? Icons.stay_primary_landscape
-                  : Icons.screen_rotation)),
-        ],
-      ),
-      body: OrientationBuilder(builder: (context, orientation) {
-        final isPortrait = orientation == Orientation.portrait;
-        if (_ort_portrait != isPortrait) {
-          WidgetsBinding.instance.addPostFrameCallback(
-              (_) => setState(() => _ort_portrait = isPortrait));
-        }
-        return Column(
-          children: [
-            const SizedBox(height: 16),
-            SizedBox(
-              height: 300,
-              child: Padding(
-                padding: const EdgeInsets.all(12.0),
-                child: Chart(
-                  data: _data,
-                  minX: _minX,
-                  maxX: _maxX,
-                  minY: _minY,
-                  maxY: _maxY,
+      //home: Scaffold(
+      Scaffold(
+        appBar: AppBar(
+          title: const Text('USB Serial'),
+          actions: <Widget>[
+            IconButton(
+                onPressed: _isConnected ? _disconnect : null,
+                icon: Icon(Icons.usb_off)),
+            IconButton(
+                onPressed: _isConnected ? null : () => _refresh(context),
+                icon: Icon(Icons.find_replace)),
+            IconButton(
+                onPressed: _orientation,
+                icon: Icon(_ort_portrait
+                    ? Icons.stay_primary_landscape
+                    : Icons.screen_rotation)),
+          ],
+        ),
+        body: OrientationBuilder(builder: (context, orientation) {
+          final isPortrait = orientation == Orientation.portrait;
+          if (_ort_portrait != isPortrait) {
+            WidgetsBinding.instance.addPostFrameCallback(
+                    (_) => setState(() => _ort_portrait = isPortrait));
+          }
+          return Column(
+            children: [
+              const SizedBox(height: 16),
+              SizedBox(
+                height: 300,
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Chart(
+                    data: _data,
+                    minX: _minX,
+                    maxX: _maxX,
+                    minY: _minY,
+                    maxY: _maxY,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 12),
-            Slider(
-              value: _scaleX,
-              min: 0.1,
-              max: 2.0,
-              divisions: 45,
-              label: "X 縮放 ${_scaleX.toStringAsFixed(2)}x",
-              onChanged: (value) {
-                setState(() {
-                  _scaleX = value;
-                  _applyScale();
-                });
-              },
-            ),
-            Slider(
-              value: _scaleY,
-              min: 0.1,
-              max: 2.0,
-              divisions: 45,
-              label: "Y 縮放 ${_scaleY.toStringAsFixed(2)}x",
-              onChanged: (value) {
-                setState(() {
-                  _scaleY = value;
-                  _applyScale();
-                });
-              },
-            ),
-            Text(_receivedData),
-          ],
-        );
+              const SizedBox(height: 12),
+              Slider(
+                value: _scaleX,
+                min: 0.1,
+                max: 2.0,
+                divisions: 45,
+                label: "X 縮放 ${_scaleX.toStringAsFixed(2)}x",
+                onChanged: (value) {
+                  setState(() {
+                    _scaleX = value;
+                    _applyScale();
+                  });
+                },
+              ),
+              Slider(
+                value: _scaleY,
+                min: 0.1,
+                max: 2.0,
+                divisions: 45,
+                label: "Y 縮放 ${_scaleY.toStringAsFixed(2)}x",
+                onChanged: (value) {
+                  setState(() {
+                    _scaleY = value;
+                    _applyScale();
+                  });
+                },
+              ),
+              Text(_receivedData),
+            ],
+          );
 
-        /*InteractiveViewer(
+          /*InteractiveViewer(
           constrained: false,
           boundaryMargin: const EdgeInsets.all(20),
           minScale: 0.5,
@@ -319,7 +394,7 @@ class _MyHomePageState extends State<MyHomePage> {
               )),
         );*/ //without gesture
 
-        /*Padding(
+          /*Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
             children: [
@@ -330,7 +405,7 @@ class _MyHomePageState extends State<MyHomePage> {
             ],
           ),
         );*/
-      }),
-    ); //);
+        }),
+      ); //);
   }
 }

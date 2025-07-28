@@ -61,6 +61,7 @@ class Chart extends StatelessWidget {
         clipData: FlClipData.all(),
         // 畫面拖曳與縮放
         // 注意：需要將畫面包在 InteractiveViewer 外層才會啟用 pinch zoom
+
       ),
     );
   }
