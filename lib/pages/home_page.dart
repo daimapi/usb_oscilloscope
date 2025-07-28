@@ -2,12 +2,10 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_serial_communication/flutter_serial_communication.dart';
-import 'package:usb_oscilloscope/widgets/LineChart.dart';
-import 'package:fl_chart/fl_chart.dart';
 import 'dart:math';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/scheduler.dart';
+import 'package:oscilloscope/oscilloscope.dart';
 
 List<double> parseDoubleList(String message) {
   return message
@@ -27,53 +25,33 @@ class MyHomePage extends StatefulWidget {
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> with SingleTickerProviderStateMixin {
+class _MyHomePageState extends State<MyHomePage> {
   int data = 0;
   final _serial = FlutterSerialCommunication();
   List<dynamic> _devices = [];
   bool _isConnected = false;
   String _receivedData = "";
   bool _ort_portrait = true;
-  List<FlSpot> _data = [];
   List<double> _datastream = [];
   Timer? _updateTimer;
   bool _isUpdateScheduled = false;
   final List<String> _pendingMessages = [];
   bool _isComputing = false;
-  late final Ticker _ticker;
+  final ValueNotifier<List<double>> _dataStreamNotifier = ValueNotifier([]);
 
-  double _minX = 0;
-  double _maxX = 10;
+  //double _minX = 0;
+  //double _maxX = 10;
   double _minY = -1.5;
   double _maxY = 1.5;
 
   double _scaleX = 1.0;
   double _scaleY = 1.0;
 
-  Duration _lastUpdate = Duration.zero;
-
   @override
   void initState() {
     super.initState();
     _mockReceive();
     //_initSerial();
-    _ticker = Ticker(_onTick)..start();
-  }
-
-  void _onTick(Duration elapsed) {
-    // 每 50ms 更新一次圖表
-    if (elapsed - _lastUpdate >= const Duration(milliseconds: 50)) {
-      _lastUpdate = elapsed;
-      _updateChart();
-    }
-  }
-
-  void _updateChart() {
-    final len = _datastream.length.clamp(0, 1000);
-    final List<FlSpot> _nextdata = List.generate(len, (i) => FlSpot(i.toDouble(), _datastream[i]));
-    setState(() {
-      _data = _nextdata;
-    });
   }
 
   void _processNextBatch() async {
@@ -100,10 +78,7 @@ class _MyHomePageState extends State<MyHomePage> with SingleTickerProviderStateM
           //debugPrint("dsl: ${_datastream.length}");
           //debugPrint("🔄 Running updateTimer...");
           //final len = _datastream.length.clamp(0, 1000);
-          //final List<FlSpot> _nextdata = List.generate(len, (i) => FlSpot(i.toDouble(), _datastream[i]));
-          //setState(() {
-          //  _data = _nextdata;
-          //});
+          _dataStreamNotifier.value = List.from(_datastream);
         });
       }
     } catch (e) {
@@ -125,12 +100,6 @@ class _MyHomePageState extends State<MyHomePage> with SingleTickerProviderStateM
     });
     debugPrint("🔧 Mock started");
   } // 模擬收到資料
-
-  @override
-  void dispose() {
-    _ticker.dispose();
-    super.dispose();
-  }
 
   void _onDataReceived(String message) async{//{
     /*try {
@@ -289,19 +258,25 @@ class _MyHomePageState extends State<MyHomePage> with SingleTickerProviderStateM
   }
 
   void _applyScale() {
-    final xCenter = (_minX + _maxX) / 2;
+    //final xCenter = (_minX + _maxX) / 2;
     final yCenter = (_minY + _maxY) / 2;
 
-    final xRange = 10 / _scaleX;
+    //final xRange = 10 / _scaleX;
     final yRange = 3 / _scaleY;
 
     setState(() {
-      _minX = xCenter - xRange / 2;
-      _maxX = xCenter + xRange / 2;
+      //_minX = xCenter - xRange / 2;
+      //_maxX = xCenter + xRange / 2;
       _minY = yCenter - yRange / 2;
       _maxY = yCenter + yRange / 2;
     });
   } //gpt ass
+
+  @override
+  void dispose() {
+    _dataStreamNotifier.dispose(); // ✅ 加這行
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -337,12 +312,17 @@ class _MyHomePageState extends State<MyHomePage> with SingleTickerProviderStateM
                 height: 300,
                 child: Padding(
                   padding: const EdgeInsets.all(12.0),
-                  child: Chart(
-                    data: _data,
-                    minX: _minX,
-                    maxX: _maxX,
-                    minY: _minY,
-                    maxY: _maxY,
+                  child: ValueListenableBuilder<List<double>>(
+                    valueListenable: _dataStreamNotifier,
+                    builder: (context, value, _) {
+                      return Oscilloscope(
+                        showYAxis: true,
+                        yAxisMax: _maxY,
+                        yAxisMin: _minY,
+                        traceColor: Colors.blue,
+                        dataSet: value,
+                      );
+                    },
                   ),
                 ),
               ),
