@@ -38,6 +38,7 @@ dependencies:
   flutter_serial_communication: ^0.2.8
   fl_chart: ^1.0.0
   graphic: ^2.6.0
+  oscilloscope: ^0.2.0+1
 
 dev_dependencies:
   flutter_test:
