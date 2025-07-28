@@ -63,7 +63,8 @@ class _MyHomePageState extends State<MyHomePage> {
     _pendingMessages.clear();
 
     try {
-      final List<double> parsed = await compute(parseDoubleList, batch);//parseDoubleList(message);
+      final List<double> parsed =
+          await compute(parseDoubleList, batch); //parseDoubleList(message);
 
       _datastream.addAll(parsed);
       if (_datastream.length > 1000) {
@@ -72,7 +73,7 @@ class _MyHomePageState extends State<MyHomePage> {
       if (!_isUpdateScheduled) {
         _isUpdateScheduled = true;
         _updateTimer = Timer(const Duration(milliseconds: 50), () {
-          _isUpdateScheduled = false;//throttle
+          _isUpdateScheduled = false; //throttle
 
           //debugPrint("ndl: ${parsed.length}");
           //debugPrint("dsl: ${_datastream.length}");
@@ -101,7 +102,8 @@ class _MyHomePageState extends State<MyHomePage> {
     debugPrint("🔧 Mock started");
   } // 模擬收到資料
 
-  void _onDataReceived(String message) async{//{
+  void _onDataReceived(String message) async {
+    //{
     /*try {
       final List<double> newData = message
           .split('\n')
@@ -166,7 +168,7 @@ class _MyHomePageState extends State<MyHomePage> {
     _pendingMessages.add(message);
 
     if (!_isComputing) {
-      _processNextBatch();  // 只有一個 compute 跑著
+      _processNextBatch(); // 只有一個 compute 跑著
     }
   }
 
@@ -182,18 +184,21 @@ class _MyHomePageState extends State<MyHomePage> {
         message = String.fromCharCodes(event);
       } else {
         message = event.toString();
-      }//income message to string
+      } //income message to string
       _onDataReceived(message);
     });
 
-    _serial.getDeviceConnectionListener().receiveBroadcastStream().listen((event) {
+    _serial
+        .getDeviceConnectionListener()
+        .receiveBroadcastStream()
+        .listen((event) {
       debugPrint("🔌 Device Event: $event");
     });
   }
 
   Future<void> _connectToDevice(dynamic device) async {
     bool result =
-    await _serial.connect(device, 2000000); // use your own baud rate
+        await _serial.connect(device, 2000000); // use your own baud rate
     setState(() => _isConnected = result);
     debugPrint("✅ Connected: $result");
   }
@@ -214,16 +219,16 @@ class _MyHomePageState extends State<MyHomePage> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
               ..._devices.map((device) => ListTile(
-                title: Text(device.deviceName ?? "Unnamed Device"),
-                subtitle: Text(device.manufacturerName ?? "Unknown"),
-                trailing: IconButton(
-                  onPressed: () {
-                    _connectToDevice(device);
-                    Navigator.pop(context);
-                  },
-                  icon: Icon(Icons.usb),
-                ),
-              )),
+                    title: Text(device.deviceName ?? "Unnamed Device"),
+                    subtitle: Text(device.manufacturerName ?? "Unknown"),
+                    trailing: IconButton(
+                      onPressed: () {
+                        _connectToDevice(device);
+                        Navigator.pop(context);
+                      },
+                      icon: Icon(Icons.usb),
+                    ),
+                  )),
               TextButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Close'),
@@ -281,83 +286,77 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   Widget build(BuildContext context) {
     return //MaterialApp(
-      //home: Scaffold(
-      Scaffold(
-        appBar: AppBar(
-          title: const Text('USB Serial'),
-          actions: <Widget>[
-            IconButton(
-                onPressed: _isConnected ? _disconnect : null,
-                icon: Icon(Icons.usb_off)),
-            IconButton(
-                onPressed: _isConnected ? null : () => _refresh(context),
-                icon: Icon(Icons.find_replace)),
-            IconButton(
-                onPressed: _orientation,
-                icon: Icon(_ort_portrait
-                    ? Icons.stay_primary_landscape
-                    : Icons.screen_rotation)),
-          ],
-        ),
-        body: OrientationBuilder(builder: (context, orientation) {
-          final isPortrait = orientation == Orientation.portrait;
-          if (_ort_portrait != isPortrait) {
-            WidgetsBinding.instance.addPostFrameCallback(
-                    (_) => setState(() => _ort_portrait = isPortrait));
-          }
-          return Column(
-            children: [
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 300,
-                child: Padding(
-                  padding: const EdgeInsets.all(12.0),
-                  child: ValueListenableBuilder<List<double>>(
-                    valueListenable: _dataStreamNotifier,
-                    builder: (context, value, _) {
-                      return Oscilloscope(
-                        showYAxis: true,
-                        yAxisMax: _maxY,
-                        yAxisMin: _minY,
-                        traceColor: Colors.blue,
-                        dataSet: value,
-                      );
-                    },
+        //home: Scaffold(
+        Scaffold(
+            appBar: AppBar(
+              title: const Text('USB Serial'),
+              actions: <Widget>[
+                IconButton(
+                    onPressed: _isConnected ? _disconnect : null,
+                    icon: Icon(Icons.usb_off)),
+                IconButton(
+                    onPressed: _isConnected ? null : () => _refresh(context),
+                    icon: Icon(Icons.find_replace)),
+                IconButton(
+                    onPressed: _orientation,
+                    icon: Icon(_ort_portrait
+                        ? Icons.stay_primary_landscape
+                        : Icons.screen_rotation)),
+              ],
+            ),
+            body: Column(
+              children: [
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: 300,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: ValueListenableBuilder<List<double>>(
+                      valueListenable: _dataStreamNotifier,
+                      builder: (context, value, _) {
+                        return Oscilloscope(
+                          showYAxis: true,
+                          yAxisMax: _maxY,
+                          yAxisMin: _minY,
+                          traceColor: Colors.blue,
+                          dataSet: value,
+                        );
+                      },
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              Slider(
-                value: _scaleX,
-                min: 0.1,
-                max: 2.0,
-                divisions: 45,
-                label: "X 縮放 ${_scaleX.toStringAsFixed(2)}x",
-                onChanged: (value) {
-                  setState(() {
-                    _scaleX = value;
-                    _applyScale();
-                  });
-                },
-              ),
-              Slider(
-                value: _scaleY,
-                min: 0.1,
-                max: 2.0,
-                divisions: 45,
-                label: "Y 縮放 ${_scaleY.toStringAsFixed(2)}x",
-                onChanged: (value) {
-                  setState(() {
-                    _scaleY = value;
-                    _applyScale();
-                  });
-                },
-              ),
-              Text(_receivedData),
-            ],
-          );
+                const SizedBox(height: 12),
+                Slider(
+                  value: _scaleX,
+                  min: 0.1,
+                  max: 2.0,
+                  divisions: 45,
+                  label: "X 縮放 ${_scaleX.toStringAsFixed(2)}x",
+                  onChanged: (value) {
+                    setState(() {
+                      _scaleX = value;
+                      _applyScale();
+                    });
+                  },
+                ),
+                Slider(
+                  value: _scaleY,
+                  min: 0.1,
+                  max: 2.0,
+                  divisions: 45,
+                  label: "Y 縮放 ${_scaleY.toStringAsFixed(2)}x",
+                  onChanged: (value) {
+                    setState(() {
+                      _scaleY = value;
+                      _applyScale();
+                    });
+                  },
+                ),
+                Text(_receivedData),
+              ],
+            )
 
-          /*InteractiveViewer(
+            /*InteractiveViewer(
           constrained: false,
           boundaryMargin: const EdgeInsets.all(20),
           minScale: 0.5,
@@ -374,7 +373,7 @@ class _MyHomePageState extends State<MyHomePage> {
               )),
         );*/ //without gesture
 
-          /*Padding(
+            /*Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
             children: [
@@ -385,7 +384,7 @@ class _MyHomePageState extends State<MyHomePage> {
             ],
           ),
         );*/
-        }),
-      ); //);
+
+            ); //);
   }
 }
