@@ -127,30 +127,34 @@ class _MyHomePageState extends State<MyHomePage>
           await compute(parseDoubleList, batch); //parseDoubleList(message);
 
       _datastream.addAll(parsed);
-      if (_datastream.length > 1000 && !_isRecording) {
-        _datastream.removeRange(0, _datastream.length - 1000);
-      }
-      if (!_isUpdateScheduled && !_isRecording) {
-        _isUpdateScheduled = true;
-        _updateTimer = Timer(const Duration(milliseconds: 50), () {
-          _isUpdateScheduled = false; //throttle
-
-          //debugPrint("ndl: ${parsed.length}");
-          //debugPrint("🔄 Running updateTimer...");
-          //final len = _datastream.length.clamp(0, 1000);
-          //_dataStreamNotifier.value = List.from(_datastream);
-        });
-      }
-      if (_isRecording && _datastream.length >= _seconds * 1000) {
-        if (_datastream.length > 1000) {
-          _datastream.removeRange(
-              (_seconds * 1000).toInt(), _datastream.length);
+      if (_isRecording) {
+        if (_datastream.length >= _seconds * 1000) {
+          if (_datastream.length > _seconds * 1000) {
+            _datastream.removeRange(
+                (_seconds * 1000).toInt(), _datastream.length);
+          }
+          _dataStreamNotifier.value = List.from(_datastream);
+          _isRecording = false;
+          _pendingMessages.clear();
+          setState(() {});
         }
-        _dataStreamNotifier.value = List.from(_datastream);
-        _isRecording = false;
-        _pendingMessages.clear();
-        setState(() {});
+      }else{
+        if (_datastream.length > 1000) {
+          _datastream.removeRange(0, _datastream.length - 1000);
+        }
+        if (!_isUpdateScheduled) {
+          _isUpdateScheduled = true;
+          _updateTimer = Timer(const Duration(milliseconds: 50), () {
+            _isUpdateScheduled = false; //throttle
+
+            //debugPrint("ndl: ${parsed.length}");
+            //debugPrint("🔄 Running updateTimer...");
+            //final len = _datastream.length.clamp(0, 1000);
+            //_dataStreamNotifier.value = List.from(_datastream);
+          });
+        }
       }
+
       debugPrint("dsl: ${_datastream.length}");
       debugPrint("ndl: ${parsed.length}");
     } catch (e) {
@@ -593,14 +597,14 @@ class _MyHomePageState extends State<MyHomePage>
                       onPressed: _isRecording ? null : _startRecording,
                       child: const Text("記錄"),
                     ),
-                    /*IconButton(
+                    IconButton(
                       icon: Icon(Icons.monitor),
-                      onPressed: _isHold ? () => Navigator.push(
+                      onPressed: _isHold && !_isRecording ? () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                            builder: (context) => const ViewPage()),
+                            builder: (context) => ViewPage(data: _datastream)),
                       ) : null,
-                    ),*/
+                    ),
                   ],
                 ),
               ],

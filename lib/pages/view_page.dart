@@ -14,32 +14,45 @@ class ViewPage extends StatefulWidget {
 }
 
 class _ViewPageState extends State<ViewPage> {
-  double _minY = -1.5;
-  double _maxY = 1.5;
+  double _minY = -5.0;
+  double _maxY = 5.0;
+  double _minX = 0;
+  double _maxX = 1000;
+  double _offsetX = 0.0;
   double _offsetY = 0.0;
   double _scaleX = 1.0;
   double _scaleY = 1.0;
   double _ratio = 0.4;
+
+
 
   List<FlSpot> _toFlSpot(List<double> data) {
     return List.generate(data.length, (i) {
       return FlSpot(i.toDouble(), data[i]);});
   }
 
-  /*void _applyScale() {
+  void _applyScale() {
     //final xCenter = (_minX + _maxX) / 2;
     //final yCenter = (_minY + _maxY) / 2;
 
     //final xRange = 10 / _scaleX;
-    final yRange = 3 / _scaleY;
+    final len = widget.data.length.toDouble();
+    final yRange = 10 / _scaleY;
+    final xRange = len / _scaleX;
 
     setState(() {
-      //_minX = xCenter - xRange / 2;
-      //_maxX = xCenter + xRange / 2;
+      _minX = -_offsetX + len/2 - xRange / 2;
+      _maxX = -_offsetX + len/2 + xRange / 2;
       _minY = _offsetY - yRange / 2;
       _maxY = _offsetY + yRange / 2;
     });
-  } *///gpt ass
+  } //gpt ass
+
+  @override
+  void initState() {
+    super.initState();
+    _maxX = widget.data.length.toDouble();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -90,8 +103,8 @@ class _ViewPageState extends State<ViewPage> {
                             data: _toFlSpot(widget.data),
                             minY: _minY,
                             maxY: _maxY,
-                            minX: 0,
-                            maxX: widget.data.length.toDouble(),
+                            minX: _minX,
+                            maxX: _maxX,
                           ),
                         ],
                       ),
@@ -113,20 +126,8 @@ class _ViewPageState extends State<ViewPage> {
               ),
             ),
             const SizedBox(height: 12),
-            /*Slider(
-                  value: _scaleX,
-                  min: 0.1,
-                  max: 2.0,
-                  divisions: 45,
-                  label: "X 縮放 ${_scaleX.toStringAsFixed(2)}x",
-                  onChanged: (value) {
-                    setState(() {
-                      _scaleX = value;
-                      _applyScale();
-                    });
-                  },
-                ),*/
-            /*Row(
+
+            Row(
               children: <Widget>[
                 Slider(
                   value: _scaleY,
@@ -155,6 +156,32 @@ class _ViewPageState extends State<ViewPage> {
                   },
                 ),
                 Slider(
+                  value: _scaleX,
+                  min: 0.1,
+                  max: 5.0,
+                  divisions: 45,
+                  label: "X 縮放 ${_scaleX.toStringAsFixed(2)}x",
+                  onChanged: (value) {
+                    setState(() {
+                      _scaleX = value;
+                      _applyScale();
+                    });
+                  },
+                ),
+                Slider(
+                  value: _offsetX,
+                  min: -1000.0,
+                  max: 1000.0,
+                  divisions: 100,
+                  label: "X 偏移 ${_offsetX.toStringAsFixed(2)}",
+                  onChanged: (value) {
+                    setState(() {
+                      _offsetX = value;
+                      _applyScale(); // ✅ 重新套用 Y 軸範圍
+                    });
+                  },
+                ),
+                Slider(
                   value: _ratio,
                   min: 0.1,
                   max: 0.9,
@@ -170,9 +197,12 @@ class _ViewPageState extends State<ViewPage> {
                 IconButton(
                   onPressed: () {
                     setState(() {
-                      _minY = -1.5;
-                      _maxY = 1.5;
+                      _minY = -5.0;
+                      _maxY = 5.0;
+                      _minX = 0;
+                      _maxX = widget.data.length.toDouble();
                       _offsetY = 0.0;
+                      _offsetX = 0.0;
                       _scaleX = 1.0;
                       _scaleY = 1.0;
                       _applyScale();
@@ -181,7 +211,7 @@ class _ViewPageState extends State<ViewPage> {
                   icon: Icon(Icons.vertical_align_center),
                 ),
               ],
-            ),*/
+            ),
           ],
         ));
   }
