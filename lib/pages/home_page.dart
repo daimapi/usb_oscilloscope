@@ -1,4 +1,4 @@
-//ontick+notbdr
+//ontick+notbdr+counttorecordthrottle
 import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
@@ -7,7 +7,9 @@ import 'dart:math';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
+//import 'package:usb_oscilloscope/widgets/rtosc.dart';
 import 'package:oscilloscope/oscilloscope.dart';
+import 'package:usb_oscilloscope/pages/view_page.dart';
 
 List<double> parseDoubleList(String message) {
   return message
@@ -33,7 +35,8 @@ class _MyHomePageState extends State<MyHomePage>
   final _serial = FlutterSerialCommunication();
   List<dynamic> _devices = [];
   bool _isConnected = false;
-  String _receivedData = "";
+
+  //String _receivedData = "";
   bool _ort_portrait = true;
   List<double> _datastream = [];
   Timer? _updateTimer;
@@ -42,26 +45,68 @@ class _MyHomePageState extends State<MyHomePage>
   bool _isComputing = false;
   late final Ticker _ticker;
   final ValueNotifier<List<double>> _dataStreamNotifier = ValueNotifier([]);
+  bool _isHold = false;
+  final TextEditingController _secondsController = TextEditingController();
+  bool _isRecording = false;
+  late double _seconds;
+  int _VolLevel = 0;
 
   //double _minX = 0;
   //double _maxX = 10;
   double _minY = -1.5;
   double _maxY = 1.5;
-
+  double _offsetY = 0.0;
   double _scaleX = 1.0;
   double _scaleY = 1.0;
+  double _ratio = 0.4;
 
   Duration _lastUpdate = Duration.zero;
 
   @override
   void initState() {
     super.initState();
-    _mockReceive();
-    //_initSerial();
+    //_mockReceive();
+    _initSerial();
     _ticker = Ticker(_onTick)..start();
   }
 
+  Future<void> _changeVolLevel(int target) async {
+    if (!_isConnected) return;
+    late List<int> sdata;
+    switch (target) {
+      case 0:
+        sdata = [0x30];
+        break;
+      case 1:
+        sdata = [0x31];
+        break;
+      case 2:
+        sdata = [0x32];
+        break;
+      case 3:
+        sdata = [0x33];
+        break;
+    }
+    _VolLevel = target;
+    bool sent = await _serial.write(Uint8List.fromList(sdata));
+    debugPrint("Sent: $sent");
+    setState(() {});
+  }
+
+  void _startRecording() {
+    final seconds = double.tryParse(_secondsController.text.trim());
+    if (seconds == null || seconds <= 0) return;
+    _seconds = seconds;
+
+    setState(() {
+      _isHold = true; // 暫停畫面更新
+      _isRecording = true;
+      _datastream.clear();
+    });
+  }
+
   void _onTick(Duration elapsed) {
+    if (_isHold) return;
     // 每 16ms 更新一次圖表
     if (elapsed - _lastUpdate >= const Duration(milliseconds: 16)) {
       _lastUpdate = elapsed;
@@ -82,21 +127,32 @@ class _MyHomePageState extends State<MyHomePage>
           await compute(parseDoubleList, batch); //parseDoubleList(message);
 
       _datastream.addAll(parsed);
-      if (_datastream.length > 1000) {
+      if (_datastream.length > 1000 && !_isRecording) {
         _datastream.removeRange(0, _datastream.length - 1000);
       }
-      if (!_isUpdateScheduled) {
+      if (!_isUpdateScheduled && !_isRecording) {
         _isUpdateScheduled = true;
         _updateTimer = Timer(const Duration(milliseconds: 50), () {
           _isUpdateScheduled = false; //throttle
 
           //debugPrint("ndl: ${parsed.length}");
-          //debugPrint("dsl: ${_datastream.length}");
           //debugPrint("🔄 Running updateTimer...");
           //final len = _datastream.length.clamp(0, 1000);
           //_dataStreamNotifier.value = List.from(_datastream);
         });
       }
+      if (_isRecording && _datastream.length >= _seconds * 1000) {
+        if (_datastream.length > 1000) {
+          _datastream.removeRange(
+              (_seconds * 1000).toInt(), _datastream.length);
+        }
+        _dataStreamNotifier.value = List.from(_datastream);
+        _isRecording = false;
+        _pendingMessages.clear();
+        setState(() {});
+      }
+      debugPrint("dsl: ${_datastream.length}");
+      debugPrint("ndl: ${parsed.length}");
     } catch (e) {
       debugPrint("❌ compute error: $e");
     }
@@ -180,6 +236,7 @@ class _MyHomePageState extends State<MyHomePage>
     } catch (e) {
       debugPrint("❌ error: $e");
     }*/
+    if (_isHold && !_isRecording) return;
     _pendingMessages.add(message);
 
     if (!_isComputing) {
@@ -221,7 +278,8 @@ class _MyHomePageState extends State<MyHomePage>
   Future<void> _refresh(BuildContext context) async {
     debugPrint("Refresh");
     _devices = [];
-    _receivedData = "";
+    //_receivedData = "";
+    _VolLevel = 0;
     await _initSerial();
     if (!context.mounted) return; // Ensure context is still valid
     showDialog<String>(
@@ -281,7 +339,7 @@ class _MyHomePageState extends State<MyHomePage>
 
   void _applyScale() {
     //final xCenter = (_minX + _maxX) / 2;
-    final yCenter = (_minY + _maxY) / 2;
+    //final yCenter = (_minY + _maxY) / 2;
 
     //final xRange = 10 / _scaleX;
     final yRange = 3 / _scaleY;
@@ -289,8 +347,8 @@ class _MyHomePageState extends State<MyHomePage>
     setState(() {
       //_minX = xCenter - xRange / 2;
       //_maxX = xCenter + xRange / 2;
-      _minY = yCenter - yRange / 2;
-      _maxY = yCenter + yRange / 2;
+      _minY = _offsetY - yRange / 2;
+      _maxY = _offsetY + yRange / 2;
     });
   } //gpt ass
 
@@ -303,12 +361,38 @@ class _MyHomePageState extends State<MyHomePage>
 
   @override
   Widget build(BuildContext context) {
+    final height = MediaQuery.of(context).size.height * _ratio;
     return //MaterialApp(
         //home: Scaffold(
         Scaffold(
             appBar: AppBar(
               title: const Text('USB Serial'),
               actions: <Widget>[
+                IconButton(
+                  onPressed: () {
+                    switch (_VolLevel) {
+                      case 0:
+                        _changeVolLevel(1);
+                        break;
+                      case 1:
+                        _changeVolLevel(2);
+                        break;
+                      case 2:
+                        _changeVolLevel(3);
+                        break;
+                      case 3:
+                        _changeVolLevel(0);
+                        break;
+                    }
+                  },
+                  icon: switch (_VolLevel) {
+                    0 => Icon(Icons.two_mp),
+                    1 => Icon(Icons.ten_mp),
+                    2 => Icon(Icons.twenty_mp),
+                    3 => Icon(Icons.five_k),
+                    _ => Icon(Icons.wash),
+                  },
+                ),
                 IconButton(
                     onPressed: _isConnected ? _disconnect : null,
                     icon: Icon(Icons.usb_off)),
@@ -325,7 +409,7 @@ class _MyHomePageState extends State<MyHomePage>
             body: Column(
               children: [
                 const SizedBox(height: 16),
-                SizedBox(
+                /*SizedBox(
                   height: 300,
                   child: Padding(
                     padding: const EdgeInsets.all(12.0),
@@ -342,9 +426,91 @@ class _MyHomePageState extends State<MyHomePage>
                       },
                     ),
                   ),
+                ),*/
+                SizedBox(
+                  height: height,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Row(
+                      children: [
+                        // 🟨 Y軸標籤
+                        Column(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: List.generate(5, (i) {
+                            double value = _maxY - i * ((_maxY - _minY) / 4);
+                            return Text(value.toStringAsFixed(4),
+                                style: TextStyle(
+                                    fontSize: 12, color: Colors.grey));
+                          }),
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Stack(
+                            children: [
+                              // 🟦 Oscilloscope 波形圖
+                              ValueListenableBuilder<List<double>>(
+                                valueListenable: _dataStreamNotifier,
+                                builder: (context, value, _) {
+                                  return Oscilloscope(
+                                    showYAxis: true,
+                                    yAxisMax: _maxY,
+                                    yAxisMin: _minY,
+                                    traceColor: Colors.blue,
+                                    dataSet: value,
+                                  );
+                                },
+                              ),
+                              // 🟥 XY軸標籤
+                              Positioned(
+                                top: 0,
+                                right: 4,
+                                child: Text("Y",
+                                    style: TextStyle(color: Colors.grey)),
+                              ),
+                              Positioned(
+                                bottom: 0,
+                                right: 8,
+                                child: Text("時間 →",
+                                    style: TextStyle(color: Colors.grey)),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 100,
+                          child: ValueListenableBuilder<List<double>>(
+                            valueListenable: _dataStreamNotifier,
+                            builder: (context, value, _) {
+                              final recent = value.take(5); // 自訂函式或手動取
+                              final text = recent
+                                  .map((e) => e.toStringAsFixed(4))
+                                  .join('\n');
+                              final avg = value.isNotEmpty
+                                  ? (value.reduce((a, b) => a + b) /
+                                      value.length)
+                                  : 0.0;
+                              final latest =
+                                  value.isNotEmpty ? value.last : 0.0;
+
+                              return Text(
+                                "最近值:\n$text\n\n"
+                                "最新值: ${latest.toStringAsFixed(4)}\n"
+                                "平均值: ${avg.toStringAsFixed(4)}\n"
+                                "max: ${value.isNotEmpty ? value.reduce(max).toStringAsFixed(4) : 0.0}\n"
+                                "min: ${value.isNotEmpty ? value.reduce(min).toStringAsFixed(4) : 0.0}",
+                                style: TextStyle(
+                                    fontSize: 12, color: Colors.black87),
+                              );
+                            },
+                          ),
+                        )
+                      ],
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 12),
-                Slider(
+                /*Slider(
                   value: _scaleX,
                   min: 0.1,
                   max: 2.0,
@@ -356,21 +522,87 @@ class _MyHomePageState extends State<MyHomePage>
                       _applyScale();
                     });
                   },
+                ),*/
+                Row(
+                  children: <Widget>[
+                    Slider(
+                      value: _scaleY,
+                      min: 0.1,
+                      max: 2.0,
+                      divisions: 45,
+                      label: "Y 縮放 ${_scaleY.toStringAsFixed(2)}x",
+                      onChanged: (value) {
+                        setState(() {
+                          _scaleY = value;
+                          _applyScale();
+                        });
+                      },
+                    ),
+                    Slider(
+                      value: _offsetY,
+                      min: -5.0,
+                      max: 5.0,
+                      divisions: 100,
+                      label: "Y 偏移 ${_offsetY.toStringAsFixed(2)}",
+                      onChanged: (value) {
+                        setState(() {
+                          _offsetY = value;
+                          _applyScale(); // ✅ 重新套用 Y 軸範圍
+                        });
+                      },
+                    ),
+                    Slider(
+                      value: _ratio,
+                      min: 0.1,
+                      max: 0.9,
+                      divisions: 100,
+                      label: "比例 ${_ratio.toStringAsFixed(2)}",
+                      onChanged: (value) {
+                        setState(() {
+                          _ratio = value;
+                          _applyScale(); // ✅ 重新套用 Y 軸範圍
+                        });
+                      },
+                    ),
+                    IconButton(
+                      onPressed: () {
+                        setState(() {
+                          _minY = -1.5;
+                          _maxY = 1.5;
+                          _offsetY = 0.0;
+                          _scaleX = 1.0;
+                          _scaleY = 1.0;
+                          _applyScale();
+                        });
+                      },
+                      icon: Icon(Icons.vertical_align_center),
+                    ),
+                    IconButton(
+                      icon: Icon(_isHold ? Icons.play_arrow : Icons.pause),
+                      onPressed: () => setState(() => _isHold = !_isHold),
+                    ),
+                    Expanded(
+                      child: TextField(
+                        controller: _secondsController,
+                        decoration: InputDecoration(labelText: "記錄秒數"),
+                        keyboardType: TextInputType.number,
+                      ),
+                    ),
+                    SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: _isRecording ? null : _startRecording,
+                      child: const Text("記錄"),
+                    ),
+                    /*IconButton(
+                      icon: Icon(Icons.monitor),
+                      onPressed: _isHold ? () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) => const ViewPage()),
+                      ) : null,
+                    ),*/
+                  ],
                 ),
-                Slider(
-                  value: _scaleY,
-                  min: 0.1,
-                  max: 2.0,
-                  divisions: 45,
-                  label: "Y 縮放 ${_scaleY.toStringAsFixed(2)}x",
-                  onChanged: (value) {
-                    setState(() {
-                      _scaleY = value;
-                      _applyScale();
-                    });
-                  },
-                ),
-                Text(_receivedData),
               ],
             ) //;
 
@@ -390,7 +622,6 @@ class _MyHomePageState extends State<MyHomePage>
                 maxY: _maxY,
               )),
         );*/ //without gesture
-
             /*Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
