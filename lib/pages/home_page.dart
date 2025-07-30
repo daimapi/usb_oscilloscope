@@ -31,6 +31,9 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage>
     with SingleTickerProviderStateMixin {
+  final int throttletimems = 30;
+  final int ardtimeus = 1000;
+
   int data = 0;
   final _serial = FlutterSerialCommunication();
   List<dynamic> _devices = [];
@@ -144,7 +147,7 @@ class _MyHomePageState extends State<MyHomePage>
         }
         if (!_isUpdateScheduled) {
           _isUpdateScheduled = true;
-          _updateTimer = Timer(const Duration(milliseconds: 50), () {
+          _updateTimer = Timer(Duration(milliseconds: throttletimems), () {
             _isUpdateScheduled = false; //throttle
 
             //debugPrint("ndl: ${parsed.length}");
@@ -156,6 +159,7 @@ class _MyHomePageState extends State<MyHomePage>
       }
 
       debugPrint("dsl: ${_datastream.length}");
+      debugPrint("rate: ${parsed.length/throttletimems/1000*ardtimeus}");
       debugPrint("ndl: ${parsed.length}");
     } catch (e) {
       debugPrint("❌ compute error: $e");
@@ -583,7 +587,10 @@ class _MyHomePageState extends State<MyHomePage>
                     ),
                     IconButton(
                       icon: Icon(_isHold ? Icons.play_arrow : Icons.pause),
-                      onPressed: () => setState(() => _isHold = !_isHold),
+                      onPressed: () => setState(() {
+                        _isHold = !_isHold;
+                        _isRecording = false;
+                      }),
                     ),
                     Expanded(
                       child: TextField(
